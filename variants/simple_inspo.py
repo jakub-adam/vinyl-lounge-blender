@@ -73,11 +73,11 @@ d.text((cam[0] - 110, cam[1] - 30), "kamera", font=fs, fill=(200, 60, 40))
 d.text((1440, 180), "Nápad", font=H2, fill=INK)
 lines = ["Jednoduchá obývačka", "na sedenie a TV.", "", "• pohovka oproti televízoru",
          "• kreslo pri stolíku", "• komoda pod televízorom", "• okno na ľavej stene",
-         "• na stolíku hrnček a kniha,", "  vankúš na pohovke,", "  platňa pri komode",
+         "• na stolíku hrnček, kniha", "  a ovládač k TV,", "  vankúš na pohovke",
          "", "Svetlé steny, drevo,", "zelená a terakota."]
 for i, t in enumerate(lines):
     d.text((1440, 236 + i * 36), t, font=f, fill=INK)
 
-path = os.path.join(OUT, "4SA1_Claude_Interier_v01.jpg")
+path = os.path.join(OUT, "4SA1_Claude_Interier_Inspiracia_v01.jpg")
 img.save(path, quality=92)
 print("saved", path)

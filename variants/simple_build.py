@@ -41,11 +41,11 @@ def room():
     y0, y1, z0, z1 = WIN
     fw, xc, yc, zc = 0.05, -WT / 2, (y0 + y1) / 2, (z0 + z1) / 2
     e = 0.012                                # frame reaches 1 cm into the wall; depths differ so no faces coincide
-    frame = [box(0.06, fw + e, z1 - z0 + 2 * e, mat="White_Paint").move(xc, y0 + fw / 2 - e / 2, zc),
-             box(0.06, fw + e, z1 - z0 + 2 * e, mat="White_Paint").move(xc, y1 - fw / 2 + e / 2, zc),
-             box(0.056, y1 - y0, fw + e, mat="White_Paint").move(xc, yc, z0 + fw / 2 - e / 2),
-             box(0.056, y1 - y0, fw + e, mat="White_Paint").move(xc, yc, z1 - fw / 2 + e / 2),
-             box(0.05, 0.04, z1 - z0, mat="White_Paint").move(xc, yc, zc),
+    frame = [box(0.06, fw + e, z1 - z0 + 2 * e, mat="Window_Frame").move(xc, y0 + fw / 2 - e / 2, zc),
+             box(0.06, fw + e, z1 - z0 + 2 * e, mat="Window_Frame").move(xc, y1 - fw / 2 + e / 2, zc),
+             box(0.056, y1 - y0, fw + e, mat="Window_Frame").move(xc, yc, z0 + fw / 2 - e / 2),
+             box(0.056, y1 - y0, fw + e, mat="Window_Frame").move(xc, yc, z1 - fw / 2 + e / 2),
+             box(0.05, 0.04, z1 - z0, mat="Window_Frame").move(xc, yc, zc),
              box(0.008, y1 - y0 - 0.06, z1 - z0 - 0.06, mat="Glass").move(xc, yc, zc)]
     ob = ib.obj("Window", frame, col="Room", bevel=0.003)
     ob.visible_shadow = False                # glass would block the sun
@@ -79,13 +79,34 @@ def sideboard():
     return P
 
 
+def normalize_pivots():
+    """Apply rotation (rot 0, scale 1) and put every pivot in the bottom centre of the object."""
+    from mathutils import Matrix
+    for ob in bpy.data.objects:
+        if ob.type != "MESH":
+            continue
+        me = ob.data
+        me.transform(ob.rotation_euler.to_matrix().to_4x4())
+        ob.rotation_euler = (0, 0, 0)
+        xs = [v.co.x for v in me.vertices]
+        ys = [v.co.y for v in me.vertices]
+        zs = [v.co.z for v in me.vertices]
+        piv = Vector(((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, min(zs)))
+        me.transform(Matrix.Translation(-piv))
+        ob.location = ob.location + piv
+
+
 def main():
     ib.MAT.update({                          # plain colours instead of fabric textures
         "Fabric_Sofa": (None, (0.36, 0.42, 0.33), 0.9, 0, dict(sheen=0.5)),
         "Fabric_Chair": (None, (0.55, 0.25, 0.15), 0.9, 0, dict(sheen=0.5)),
         "Fabric_Pillow": (None, (0.78, 0.55, 0.15), 0.9, 0, dict(sheen=0.5)),
-        "TV_Screen": (None, (0.01, 0.01, 0.012), 0.06, 0, {}),
-        "Black_Plastic": (None, (0.03, 0.03, 0.03), 0.45, 0, {}),
+        "TV_Screen": ("tv_screen", None, 0.1, 0, dict(emit_tex=0.8)),
+        "TV_Frame": (None, (0.09, 0.09, 0.095), 0.4, 0, {}),
+        "Window_Frame": (None, (0.16, 0.17, 0.18), 0.4, 0, {}),
+        "Ceiling_Light": (None, (0.95, 0.82, 0.5), 0.3, 0, dict(emission=(1.0, 0.85, 0.6), estrength=1.5)),
+        "Remote_Body": (None, (0.05, 0.05, 0.055), 0.4, 0, {}),
+        "Remote_Buttons": (None, (0.75, 0.1, 0.08), 0.35, 0, {}),
     })
     bpy.ops.wm.read_factory_settings(use_empty=True)
     mk.set_material_resolver(ib.get_mat, ib.tile)
@@ -97,8 +118,8 @@ def main():
     room()
 
     # wall decoration: TV above the sideboard
-    tv = box(1.25, 0.045, 0.72, mat="Black_Plastic").bake()
-    tv.by_normal(lambda n, c: n[1] < -0.9, "TV_Screen", "Black_Plastic")
+    tv = box(1.25, 0.045, 0.72, mat="TV_Frame", uv=("fit", "y")).bake()
+    tv.by_normal(lambda n, c: n[1] < -0.9, "TV_Screen", "TV_Frame")
     ib.obj("TV", [tv], (2.0, RD - 0.035, 1.38), 0, col="Room", bevel=0.004)
 
     # furniture (4)
@@ -113,8 +134,10 @@ def main():
     ib.obj("Book", ib.book(0.17, 0.24, 0.03, "Book_2"), (2.25, 2.45, top), -10, col="Grabbables")
     pl = ib.obj("Pillow", ib.pillow(), (2.65, 1.14, 0.70), 0, col="Grabbables")
     pl.rotation_euler = (math.radians(70), 0, math.radians(195))
-    rec = ib.obj("Record_Sleeve", ib.sleeve("Album_1", disc=False), (2.5, RD - 0.55, 0), 0, col="Grabbables")
-    rec.rotation_euler = (math.radians(-14), 0, 0)
+    rem = [mk.rbox(0.05, 0.17, 0.018, 0.006, mat="Remote_Body", segs=(1, 2, 1)).move(0, 0, 0.009)]
+    for (x, y) in [(0, 0.06), (-0.012, 0.025), (0.012, 0.025), (-0.012, 0.0), (0.012, 0.0), (0, -0.03)]:
+        rem.append(box(0.01, 0.01, 0.004, mat="Remote_Buttons").move(x, y, 0.0185))
+    ib.obj("Remote", rem, (2.32, 2.22, top), 25, col="Grabbables")
 
     for ob in ib.COL["Grabbables"].objects:
         ob["grabbable"] = 1
@@ -138,12 +161,15 @@ def main():
     bg.inputs["Strength"].default_value = 0.8
 
     cd = bpy.data.cameras.new("Camera")
-    cd.lens = 30
+    cd.lens = 26
     cam = bpy.data.objects.new("Camera", cd)
-    cam.location = (5.2, -1.7, 2.45)
-    cam.rotation_euler = (Vector((1.8, 2.8, 0.8)) - cam.location).to_track_quat("-Z", "Y").to_euler()
-    sc.collection.objects.link(cam)
+    cam.location = (4.4, -0.6, 1.9)          # chosen so the interior covers ~99.8 % of the frame
+    cam.rotation_euler = (Vector((1.9, 2.5, 0.9)) - cam.location).to_track_quat("-Z", "Y").to_euler()
+    cc = bpy.data.collections.new("Camera")
+    sc.collection.children.link(cc)
+    cc.objects.link(cam)
     sc.camera = cam
+    normalize_pivots()
 
     sc.render.engine = "CYCLES"
     sc.cycles.device = "CPU"
@@ -163,6 +189,10 @@ def main():
             print(f"  {ob.name:14s} {len(me.polygons):6d}  {len(used)} mats")
     print("TOTAL faces", tot, "non-quads", bad)
 
+    for coll in (bpy.data.meshes, bpy.data.materials, bpy.data.images):   # remove unused data
+        for d in list(coll):
+            if d.users == 0:
+                coll.remove(d)
     bpy.ops.file.pack_all()
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, NAME + ".blend"), compress=True)
     bpy.ops.file.make_paths_relative()
@@ -171,12 +201,7 @@ def main():
                               export_yup=True, export_apply=True, export_tangents=True,
                               export_extras=True, export_hierarchy_full_collections=True,
                               export_cameras=False, export_lights=False)
-    bpy.ops.export_scene.fbx(filepath=os.path.join(OUT, NAME + ".fbx"), object_types={"MESH"},
-                             use_mesh_modifiers=True, mesh_smooth_type="FACE", use_tspace=True,
-                             apply_unit_scale=True, apply_scale_options="FBX_SCALE_ALL",
-                             axis_forward="-Z", axis_up="Y", bake_space_transform=True,
-                             path_mode="COPY", embed_textures=True, use_custom_props=True,
-                             add_leaf_bones=False, bake_anim=False)
+
     if "--render" in sys.argv:
         bpy.ops.render.render(write_still=True)
     print("done")

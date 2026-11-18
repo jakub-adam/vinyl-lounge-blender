@@ -71,6 +71,42 @@ rep(True, "Grabbables – veľkosti", "; ".join(sizes))
 packed = all(i.packed_file is not None for i in bpy.data.images if i.source == "FILE")
 rep(packed, "Textúry v .blend", f"{len(bpy.data.images)} obrázkov zabalených (Pack Resources)")
 
+import numpy as np
+
+
+def mat_color(m):
+    b = m.node_tree.nodes.get("Principled BSDF")
+    inp = b.inputs["Base Color"]
+    if inp.is_linked and inp.links[0].from_node.type == "TEX_IMAGE":
+        im = inp.links[0].from_node.image
+        px = np.array(im.pixels[:]).reshape(-1, 4)[::97, :3]
+        return px.mean(0)
+    return np.array(inp.default_value[:3])
+
+
+rot_bad, piv_bad, col_bad = [], [], []
+for ob in meshes:
+    if any(abs(a) > 1e-5 for a in ob.rotation_euler):
+        rot_bad.append(ob.name)
+    zs = [v.co.z for v in ob.data.vertices]
+    xs = [v.co.x for v in ob.data.vertices]
+    ys = [v.co.y for v in ob.data.vertices]
+    if abs(min(zs)) > 1e-4 or abs(min(xs) + max(xs)) > 1e-3 or abs(min(ys) + max(ys)) > 1e-3:
+        piv_bad.append(ob.name)
+    me = ob.evaluated_get(dg).to_mesh()
+    used = sorted({p.material_index for p in me.polygons})
+    cs = [mat_color(ob.material_slots[i].material) for i in used]
+    if max(np.abs(cs[i] - cs[j]).max() for i in range(len(cs)) for j in range(i + 1, len(cs))) < 0.08:
+        col_bad.append(ob.name)
+rep(not rot_bad, "Transformácie", "rotácia 0, scale 1 na všetkých objektoch" + (f" {rot_bad}" if rot_bad else ""))
+rep(not piv_bad, "Pivoty", "pivot každého objektu v strede jeho podstavy" + (f" {piv_bad}" if piv_bad else ""))
+rep(not col_bad, "2 rôzne farby / objekt", "na každom objekte majú materiály zreteľne rôzne farby" + (f" {col_bad}" if col_bad else ""))
+cols = sorted(c.name for c in bpy.data.collections)
+orph = [d.name for coll in (bpy.data.meshes, bpy.data.materials, bpy.data.images) for d in coll if d.users == 0]
+rep(not orph, "Poriadok", f"kolekcie {cols}; nepoužité dáta: {len(orph)}")
+mods = sorted({f"{m.type.title()}" for o in meshes for m in o.modifiers})
+rep(True, "Modifikátory v súbore", ", ".join(mods) + " (" + ", ".join(sorted(o.name for o in meshes if o.modifiers)) + ")")
+
 # --------------------------------------------------------------- .glb -----
 p = os.path.join(D, N + ".glb")
 with open(p, "rb") as f:
@@ -101,7 +137,7 @@ rep(tris < 200_000, ".glb obsah",
     f"{os.path.getsize(p) / 1e6:.1f} MB")
 
 # re-import tests (what Unity would read)
-for ext in (".glb", ".fbx"):
+for ext in (".glb",):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     fp = os.path.join(D, N + ext)
     if ext == ".glb":
@@ -118,15 +154,19 @@ for ext in (".glb", ".fbx"):
         + (", nábytok bez rotácie/scale artefaktov" if ext == ".fbx" and rot0 else ""))
 
 # --------------------------------------------------------------- files ----
-for ext, what in ((".blend", "Blender scéna"), (".glb", "glTF binárny"), (".fbx", "FBX pre Unity"),
-                  (".png", "render"), (".jpg", "2D inšpirácia")):
-    fp = os.path.join(D, N + ext)
+REQ = [(N + ".blend", "Blender scéna"), (N + ".glb", "glTF binárny"), (N + ".png", "render"),
+       ("4SA1_Claude_Interier_Inspiracia_v01.jpg", "2D inšpirácia")]
+files = sorted(os.listdir(D))
+rep(files == sorted(r[0] for r in REQ), "Presne 4 súbory, žiadne priečinky", ", ".join(files))
+for fn, what in REQ:
+    ext = os.path.splitext(fn)[1]
+    fp = os.path.join(D, fn)
     ok = os.path.exists(fp)
     extra = ""
     if ok and ext in (".png", ".jpg"):
         from PIL import Image
         extra = " %d×%d" % Image.open(fp).size
-    rep(ok, f"Súbor {N}{ext}", what + extra + (f", {os.path.getsize(fp) / 1e6:.1f} MB" if ok else " CHÝBA"))
+    rep(ok, f"Súbor {fn}", what + extra + (f", {os.path.getsize(fp) / 1e6:.1f} MB" if ok else " CHÝBA"))
 
 print("\nOBJEKTY:")
 for name, col, f, used, oe in sorted(per, key=lambda r: (r[1], r[0])):
